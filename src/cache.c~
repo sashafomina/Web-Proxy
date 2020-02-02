@@ -1,0 +1,159 @@
+#include "cache.h"
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <time.h>
+#include <math.h>
+#include <stdio.h>
+#include <pthread.h>
+
+
+
+/* Cache: node_t * cache[]*/
+struct cache_t {
+  size_t num_bytes;
+  pthread_rwlock_t rwlock;
+  node_t *buckets[];
+};
+
+cache_t *create_cache() {
+
+  cache_t *cache =  malloc(sizeof(pthread_rwlock_t) + sizeof(size_t) + sizeof(node_t *) * NUM_BUCKETS);
+  assert(cache != NULL);
+
+  /* Instantiating the cache */
+  cache->num_bytes = 0;
+  for (size_t i = 0; i < NUM_BUCKETS; i++) {
+    /* Setting the head node of each bucket to NULL*/
+    cache->buckets[i] = NULL;
+  }
+  pthread_rwlock_init(&(cache->rwlock), NULL);
+  return cache;
+}
+
+static size_t hash(char *key) {
+  size_t sum = 0;
+  for (ssize_t i = strlen(key)-1; i >=0; i--) {
+    sum += key[i];
+    sum *= 37;
+  }
+  return sum % NUM_BUCKETS;
+}
+
+node_t *find_LRU(cache_t *cache) {
+  node_t *LRU_node = NULL; 
+  for (size_t i = 0; i < NUM_BUCKETS; i++) {
+    node_t *curr_node = cache->buckets[i];
+    while (curr_node != NULL) {
+      if (LRU_node == NULL) {
+	LRU_node = curr_node;
+      }
+      
+      if (curr_node->timestamp < LRU_node->timestamp) {
+	LRU_node = curr_node;
+      }
+      curr_node = curr_node->next;
+    }
+  }
+  return LRU_node;
+}
+
+static void cache_remove(cache_t *cache,  node_t *node) {
+  size_t hashed_key = hash(node->key);
+  node_t *bucket = cache->buckets[hashed_key];
+  cache->num_bytes -= buffer_length(node->value);
+  cache->buckets[hashed_key] = dll_remove(bucket, node);
+
+}
+
+buffer_t *cache_get(cache_t *cache, char *key) {
+  pthread_rwlock_rdlock(&(cache->rwlock));
+  size_t hashed_key = hash(key); 
+  node_t *bucket = cache->buckets[hashed_key];
+  node_t *got_node = dll_get(bucket, key);
+  
+  /* Update timestamp */
+  if (got_node) {
+    got_node->timestamp = (uint64_t) clock();
+    buffer_t *got_value_cpy = buffer_copy(got_node->value);
+    pthread_rwlock_unlock(&(cache->rwlock));
+    return got_value_cpy;
+  }
+  pthread_rwlock_unlock(&(cache->rwlock));
+  return NULL;
+
+}
+
+void cache_add(cache_t *cache, char *key, buffer_t *value) {
+  pthread_rwlock_wrlock(&(cache->rwlock));
+  /* If cache filled, must evict least recently used */
+  if (cache->num_bytes + buffer_length(value) > MAX_CACHE_SIZE) {
+    node_t *LRU_node = find_LRU(cache);
+    /* Remove only called from inside add */
+    cache_remove(cache, LRU_node);
+  }
+  
+  size_t hashed_key = hash(key);
+  node_t *bucket = cache->buckets[hashed_key];
+  uint64_t timestamp = clock();
+  cache->buckets[hashed_key] = dll_add(bucket, key, value, timestamp);
+  cache->num_bytes += buffer_length(value);
+  pthread_rwlock_unlock(&(cache->rwlock));
+}
+
+
+
+void print_cache(cache_t *cache) {
+  for (size_t i = 0; i < NUM_BUCKETS; i++) {
+    node_t *curr_node = cache->buckets[i];
+    printf("\n");
+    if (curr_node != NULL) {
+      printf ("Bucket %zu: ", i);
+    
+      while (curr_node != NULL) {
+	printf("%s: %s ->", curr_node->key,
+	       buffer_string(curr_node->value));
+	curr_node = curr_node->next;
+      }
+      printf("NULL\n");
+    }
+  }
+}
+
+
+void free_cache(cache_t *cache) {
+  for (int i = 0; i < NUM_BUCKETS; i++) {
+    free_dll_dict(cache->buckets[i]);
+  }
+  free(cache);
+}
+
+/* int main() { */
+/*   cache_t *cache = create_cache(); */
+/*   for (size_t i =97; i < (97+8); i++) { */
+/*     char *key = malloc(sizeof(char) * 6); */
+/*     strcpy(key, "spoof\0"); */
+/*     key[0] = (char)i; */
+/*     buffer_t *buff = buffer_create(i); */
+/*     buffer_append_bytes(buff,(uint8_t *)key,6); */
+/*     cache_add(cache, key, buff); */
+    
+/*   } */
+/*   print_cache(cache); */
+/*   node_t *LRU = find_LRU(cache); */
+/*   printf("\nLRU: %s\n", LRU->key); */
+/*   cache_remove(cache, LRU); */
+/*   print_cache(cache); */
+/*   for (size_t i =0; i<5; i++) { */
+/*     buffer_t *gotten = cache_get(cache, "bpoof"); */
+/*     if (gotten) { */
+/*       printf("\nVALUE: %s", (char *)buffer_data(gotten)); */
+/*       buffer_free(gotten); */
+/*     } */
+
+/*   } */
+/*   free_cache(cache); */
+/*   return 0; */
+  
+/* } */
+

@@ -1,0 +1,83 @@
+#include "dll_dict.h"
+#include <stdlib.h>
+#include <assert.h>
+#include <time.h>
+#include <string.h>
+#include <stdio.h>
+
+
+node_t *dll_get(node_t *head, char *key) {
+  node_t *curr_node = head;
+  while (curr_node != NULL) {
+    if (strcmp(curr_node->key, key) == 0) {
+      return curr_node;
+    }
+    curr_node = curr_node->next;
+  }
+  return NULL; 
+}
+
+static node_t *create_node(char *key, buffer_t *value,
+		     uint64_t timestamp) {
+  node_t *new_node = malloc(sizeof(node_t));
+  new_node->key = key;
+  new_node->value = value;
+  new_node->timestamp = timestamp;
+  return new_node;
+}
+
+node_t *dll_add(node_t *head, char *key, buffer_t *value,
+		uint64_t timestamp) {
+
+  /* assert(dll_get(head, key) != -1); */
+  
+  node_t *new_node = create_node(key, value, timestamp);
+  /* If dict is empty */
+  if (head) {
+    head->prev =  new_node;
+    new_node->next = head;
+    head = new_node;
+  }
+  else {
+    head = new_node;
+    new_node->next = NULL;
+  }
+  new_node->prev = NULL;
+  return head;
+}
+
+
+node_t *dll_remove(node_t *head, node_t *node) {
+  node_t *prev_node = node->prev;
+  node_t *next_node = node->next;
+
+  if (prev_node) {
+    prev_node->next = next_node;
+  }
+  else {
+    head = next_node;
+  }
+  if (next_node) {
+    next_node->prev = prev_node;
+  }
+  /* No longer going to have a pointer to this node, must free*/
+  if (node->value) {
+    buffer_free(node->value);
+  }
+  free(node->key);
+  free(node);
+  
+  return head;
+}
+
+void free_dll_dict(node_t *head) {
+  node_t *curr_node = head;
+  while (curr_node != NULL) {
+    node_t *next_node = curr_node->next;
+    free(curr_node->key);
+    buffer_free(curr_node->value);
+    free(curr_node);
+    curr_node = next_node;
+  }
+}
+

@@ -1,0 +1,33 @@
+#ifndef HASH_H
+#define HASH_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+
+#define MAX_CACHE_SIZE 1048576;
+#define MAX_OBJECT_SIZE 100000;
+#define NUM_BUCKETS 50;
+
+/* Nodes containined in the queue and hash table*/
+typedef struct bucket_node_t bucket_node_t;
+typedef struct hash_table_t hash_table_t
+
+
+buffer_t hash_get(hash_table_t *hash_table, char *key);
+
+uint8_t hash_add(hash_table_t *hash_table, char *key, buffer_t value);
+
+char *hash_remove(hash_table_t *hash_table, char *key);
+
+uint8_t hash_contains(hash_table_t *hash_table, char *key);
+
+size_t hash_get_size(hash_table_t *hash_table);
+
+uint8_t hash_is_empty(hash_table_t *hash_table);
+
+hash_table_t *hash_create_hash_table();
+
+uint8_t hash_free_hash_table();
+
+#endif //HASH_H
